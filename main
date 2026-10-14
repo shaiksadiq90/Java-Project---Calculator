@@ -1,0 +1,131 @@
+import java.util.Scanner;
+
+public class Calculator {
+
+    public static void main(String[] args) {
+        Scanner in = new Scanner(System.in);
+        System.out.println("Calculator. Type an expression, or 'exit' to quit.");
+        while (true) {
+            System.out.print("> ");
+            if (!in.hasNextLine()) break;
+            String line = in.nextLine().trim();
+            if (line.equalsIgnoreCase("exit")) break;
+            if (line.isEmpty()) continue;
+            try {
+                System.out.println(format(evaluate(line)));
+            } catch (ArithmeticException | IllegalArgumentException e) {
+                System.out.println("Error: " + e.getMessage());
+            }
+        }
+    }
+
+    public static double evaluate(String expression) {
+        return new Parser(expression).parse();
+    }
+
+    private static String format(double value) {
+        return value == Math.rint(value) && !Double.isInfinite(value)
+                ? String.valueOf((long) value)
+                : String.valueOf(value);
+    }
+
+    /**
+     * Recursive-descent parser. Each method handles one precedence level:
+     *   expression = term   { ("+" | "-") term }
+     *   term       = unary   { ("*" | "/" | "%") unary }
+     *   unary      = "-" unary | power             (so -2^2 = -4, as in math)
+     *   power      = primary [ "^" unary ]         (right-associative: 2^3^2 = 512)
+     *   primary    = number | "(" expression ")"
+     */
+    private static final class Parser {
+        private final String input;
+        private int pos;
+
+        Parser(String input) {
+            this.input = input;
+        }
+
+        double parse() {
+            double result = expression();
+            skipSpaces();
+            if (pos < input.length()) {
+                throw new IllegalArgumentException("Unexpected '" + input.charAt(pos) + "' at position " + pos);
+            }
+            return result;
+        }
+
+        private double expression() {
+            double value = term();
+            while (true) {
+                if (eat('+')) value += term();
+                else if (eat('-')) value -= term();
+                else return value;
+            }
+        }
+
+        private double term() {
+            double value = unary();
+            while (true) {
+                if (eat('*')) value *= unary();
+                else if (eat('/')) value = divide(value, unary());
+                else if (eat('%')) value %= unary();
+                else return value;
+            }
+        }
+
+        private double power() {
+            double base = primary();
+            return eat('^') ? Math.pow(base, unary()) : base;
+        }
+
+        private double unary() {
+            return eat('-') ? -unary() : power();
+        }
+
+        private double primary() {
+            if (eat('(')) {
+                double value = expression();
+                if (!eat(')')) throw new IllegalArgumentException("Missing ')'");
+                return value;
+            }
+            return number();
+        }
+
+        private double number() {
+            skipSpaces();
+            int start = pos;
+            while (pos < input.length() && (Character.isDigit(input.charAt(pos)) || input.charAt(pos) == '.')) {
+                pos++;
+            }
+            if (start == pos) {
+                throw new IllegalArgumentException(pos < input.length()
+                        ? "Expected a number at position " + pos
+                        : "Expression ends too early");
+            }
+            try {
+                return Double.parseDouble(input.substring(start, pos));
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Bad number '" + input.substring(start, pos) + "'");
+            }
+        }
+
+        private static double divide(double a, double b) {
+            if (b == 0) throw new ArithmeticException("Division by zero");
+            return a / b;
+        }
+
+        /** Consumes the expected character (after any spaces) if it is next. */
+        private boolean eat(char expected) {
+            skipSpaces();
+            if (pos < input.length() && input.charAt(pos) == expected) {
+                pos++;
+                return true;
+            }
+            return false;
+        }
+
+        private void skipSpaces() {
+            while (pos < input.length() && Character.isWhitespace(input.charAt(pos))) pos++;
+        }
+    }
+}
